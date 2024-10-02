@@ -13,7 +13,7 @@ socket.on('offer', async (id, description) => {
 
 peerConnection.onicecandidate = event => {
     if (event.candidate) {
-        socket.emit('candidate', broadcaster, event.candidate);
+        socket.emit('candidate', event.candidate);
     }
 };
 

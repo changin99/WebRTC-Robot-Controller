@@ -43,7 +43,6 @@ io.on('connection', socket => {
     // 원격 제어 명령 처리
     socket.on('command', (command) => {
         console.log(`Received command: ${command}`);
-        // 여기에서 라즈베리파이로 명령을 전달할 수 있음
         socket.to(broadcaster).emit('command', command);
     });
 });
