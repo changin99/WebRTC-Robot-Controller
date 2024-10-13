@@ -1,22 +1,27 @@
 cmake_minimum_required(VERSION 3.5)
 project(manipulator_control)
 
-# C++11 표준 사용
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 11)
-endif()
-
-# 의존성 설정
+# ROS2 및 기타 필수 패키지 찾기
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package(dynamixel_sdk REQUIRED)  # dynamixel_sdk 패키지 추가
 
-add_executable(manipulator_node src/manipulator_node.cpp)  # 노드 실행 파일
+# Include directories
+include_directories(
+  include
+  ${CMAKE_SOURCE_DIR}/external/websocketpp
+  ${dynamixel_sdk_INCLUDE_DIRS}  # dynamixel_sdk 헤더 파일 경로 추가
+)
 
-ament_target_dependencies(manipulator_node rclcpp std_msgs)
+# Executable 설정
+add_executable(manipulator_node src/manipulator_node.cpp)
 
-install(TARGETS
-  manipulator_node
-  DESTINATION lib/${PROJECT_NAME})
+# Link libraries
+ament_target_dependencies(manipulator_node rclcpp dynamixel_sdk)
+
+# 설치 경로 설정
+install(TARGETS manipulator_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_package()

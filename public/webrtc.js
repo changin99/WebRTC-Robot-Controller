@@ -1,28 +1,37 @@
-// STUN 서버 설정 및 WebRTC PeerConnection 객체 생성
 const peerConnection = new RTCPeerConnection({
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]  // Google STUN 서버 사용
 });
 
-const videoElement = document.getElementById('video');  // 영상을 표시할 HTML 비디오 엘리먼트
+const videoElement = document.getElementById('video');  // 비디오 엘리먼트
 let dataChannel;  // 제어 명령을 전송할 DataChannel
+let isWebSocketOpen = false;  // WebSocket 연결 상태
 
 // WebSocket을 사용해 Signaling 서버와 연결 (Signaling 서버는 SDP와 ICE candidate 교환을 처리)
-const signalingServer = new WebSocket('ws://localhost:8080');
+const signalingServer = new WebSocket('ws://192.168.50.85:8080');
 
-// Signaling 서버로 메시지를 보내는 함수 (SDP 및 ICE 후보 전송)
+// WebSocket 연결이 열렸을 때만 메시지 전송
+signalingServer.onopen = () => {
+    console.log('WebSocket connected');
+    isWebSocketOpen = true;
+};
+
+// Signaling 서버로 메시지를 보내는 함수 (WebSocket 연결이 열려 있을 때만 전송)
 function sendSignal(message) {
-    signalingServer.send(JSON.stringify(message));
+    if (isWebSocketOpen) {
+        signalingServer.send(JSON.stringify(message));
+        console.log('Signal sent:', message);
+    } else {
+        console.error('WebSocket is not open yet');
+    }
 }
 
-// Signaling 서버로부터 메시지를 수신
+// Signaling 서버로부터 메시지를 수신하여 WebRTC 설정
 signalingServer.onmessage = async (message) => {
     const data = JSON.parse(message.data);
 
-    // 수신한 SDP 처리 (offer 또는 answer)
+    // SDP 처리
     if (data.sdp) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        
-        // 오퍼를 수신한 경우 SDP 응답 생성 및 전송
         if (data.sdp.type === 'offer') {
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
@@ -35,43 +44,41 @@ signalingServer.onmessage = async (message) => {
     }
 };
 
-// WebRTC ICE 후보 생성 시 Signaling 서버로 전송
+// ICE 후보 생성 시 Signaling 서버로 전송
 peerConnection.onicecandidate = (event) => {
     if (event.candidate) {
         sendSignal({ candidate: event.candidate });
+        console.log('ICE candidate sent:', event.candidate);
     }
 };
 
-// 영상 스트림 수신: 로봇에서 전송한 IP 카메라 영상을 비디오 엘리먼트에 표시
+// 영상 스트림 수신
 peerConnection.ontrack = (event) => {
     videoElement.srcObject = event.streams[0];
 };
 
-// DataChannel 생성 및 설정 (제어 명령을 로봇으로 전송)
+// DataChannel 생성 및 설정
 async function startConnection() {
-    // DataChannel을 통해 제어 명령을 전송
     dataChannel = peerConnection.createDataChannel('control');
     dataChannel.onopen = () => console.log('DataChannel opened');
     dataChannel.onclose = () => console.log('DataChannel closed');
 
-    // 로컬 SDP 오퍼 생성
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-
-    // SDP 오퍼를 Signaling 서버로 전송
     sendSignal({ sdp: peerConnection.localDescription });
 }
 
-// 방향 제어 명령 전송 함수
+// 제어 명령 전송
 function sendCommand(command) {
     if (dataChannel && dataChannel.readyState === 'open') {
-        // 명령어를 JSON 형식으로 변환 후 전송
         dataChannel.send(JSON.stringify({ command }));
         console.log(`Command sent: ${command}`);
+    } else {
+        console.error("DataChannel is not open");
     }
 }
 
-// UI에서 버튼 클릭 시 제어 명령 전송
+// UI에서 버튼 클릭 시 명령 전송
 document.getElementById('up').addEventListener('click', () => sendCommand('MOVE_FORWARD'));
 document.getElementById('down').addEventListener('click', () => sendCommand('MOVE_BACKWARD'));
 document.getElementById('left').addEventListener('click', () => sendCommand('MOVE_LEFT'));
@@ -79,3 +86,4 @@ document.getElementById('right').addEventListener('click', () => sendCommand('MO
 
 // WebRTC 연결 시작
 startConnection();
+
