@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Robot Control</title>
+    <style>
+        /* 화면 스타일 */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #container {
+            display: flex;
+            justify-content: space-between;
+            width: 80%;
+        }
+        /* 영상 스트림을 표시할 영역 */
+        #video {
+            width: 60%;
+            height: 400px;
+            background-color: black;
+        }
+        /* 제어 버튼을 배치할 영역 */
+        #controls {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        /* 버튼 스타일 */
+        button {
+            width: 100px;
+            height: 50px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 컨테이너: 왼쪽은 영상, 오른쪽은 제어 버튼 -->
+    <div id="container">
+        <!-- IP 카메라 영상 표시 -->
+        <video id="video" autoplay playsinline></video>
+
+        <!-- 로봇 제어 버튼 -->
+        <div id="controls">
+            <button id="up">⬆️</button>
+            <div>
+                <button id="left">⬅️</button>
+                <button id="right">➡️</button>
+            </div>
+            <button id="down">⬇️</button>
+        </div>
+    </div>
+
+    <!-- WebRTC와 제어 기능을 위한 JS 파일 로드 -->
+    <script src="webrtc.js"></script>
+</body>
+</html>
