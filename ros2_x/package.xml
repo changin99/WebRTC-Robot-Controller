@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>manipulator_control</name>
+  <version>0.0.0</version>
+  <description>Manipulator control using WebRTC</description>
+
+  <maintainer email="20217140@edu.hanbat.ac.kr">Changin</maintainer>
+
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

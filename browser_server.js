@@ -6,7 +6,7 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 서버 포트 설정
-const port = 3000;
+const port = 4444;
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
