@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
 // 시그널링 서버 설정 (포트: 5555)
-const wss = new WebSocket.Server({ port: 5555 });
+const wss = new WebSocket.Server({ host: '0.0.0.0', port: 5555 });
 
 // 클라이언트들을 저장할 배열
 let clients = [];
@@ -31,4 +31,4 @@ wss.on('connection', (ws) => {
     });
 });
 
-console.log('Signaling server is running on ws://localhost:5555');
+console.log('Signaling server is running on ws://0.0.0.0:5555');
