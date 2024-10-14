@@ -5,6 +5,7 @@ const ws = new WebSocket(signalingServerUrl);
 let peerConnection;
 let dataChannel;
 let videoElement = document.getElementById("video");
+let isOfferer = false;  // Offerer 역할인지 여부를 시그널링 서버에서 결정
 
 // 시그널링 서버 연결 후 처리
 ws.onopen = () => {
@@ -15,11 +16,23 @@ ws.onopen = () => {
 ws.onmessage = async (message) => {
     const signal = JSON.parse(message.data);
     
-    if (signal.sdp) {
+    if (signal.role) {
+        // 시그널링 서버로부터 Offerer/Answerer 역할을 받음
+        isOfferer = signal.role === "offer";
+        console.log(`This peer is ${isOfferer ? "Offerer" : "Answerer"}`);
+        
+        // Offerer인 경우 Offer 생성
+        if (isOfferer) {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            sendToSignalingServer({ sdp: peerConnection.localDescription });
+        }
+    }
+    else if (signal.sdp) {
         // SDP 처리 (Offer 또는 Answer)
         await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-        if (signal.sdp.type === "offer") {
-            // Offer에 대해 Answer 생성
+        if (!isOfferer && signal.sdp.type === "offer") {
+            // Offerer가 아닌 경우에 Answer 생성
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             sendToSignalingServer({ sdp: peerConnection.localDescription });
@@ -40,9 +53,7 @@ async function setupWebRTC() {
     // ICE 서버 설정
     const iceServers = [
         {
-            urls: "stun:stun.l.google.com:19302",
-            username: "yourUsername",
-            credential: "yourPassword",
+            urls: "stun:stun.l.google.com:19302"
         }
     ];
 
@@ -65,11 +76,6 @@ async function setupWebRTC() {
     peerConnection.ontrack = (event) => {
         videoElement.srcObject = event.streams[0];
     };
-
-    // Offer 생성 및 시그널링 서버로 전송
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    sendToSignalingServer({ sdp: peerConnection.localDescription });
 }
 
 // 제어 명령 버튼 설정
@@ -91,4 +97,3 @@ function sendCommand(command) {
 window.onload = () => {
     setupWebRTC();
 };
-

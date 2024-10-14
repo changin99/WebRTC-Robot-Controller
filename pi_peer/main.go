@@ -4,11 +4,10 @@ import (
     "fmt"
     "log"
     "sync"
-    //"time"
+    "encoding/json"
     "os/exec"
     "github.com/pion/webrtc/v3"
-    //"github.com/pion/ice/v2"
-    "github.com/gorilla/websocket"
+    "golang.org/x/net/websocket"
 )
 
 var (
@@ -17,25 +16,37 @@ var (
     wsConn         *websocket.Conn
     iceCandidates  []webrtc.ICECandidateInit
     mutex          sync.Mutex
+    isOfferer      bool  // Offerer인지 Answerer인지 확인하는 변수
 )
 
 func main() {
     // WebSocket 연결
     var err error
-    wsConn, _, err = websocket.DefaultDialer.Dial("ws://192.168.50.85:5555", nil)
+    wsConn, err = websocket.Dial("ws://192.168.50.85:5555", "", "http://localhost/")
     if err != nil {
         log.Fatal("Failed to connect to signaling server:", err)
     }
     defer wsConn.Close()
+
+    log.Println("WebSocket 연결 성공")
+
+    // 시그널링 서버에서 Offerer/Answerer 결정 메시지를 수신
+    var roleMsg string
+    websocket.Message.Receive(wsConn, &roleMsg)
+    if roleMsg == "offer" {
+        isOfferer = true
+    } else if roleMsg == "answer" {
+        isOfferer = false
+    }
+
+    log.Printf("This peer is %s", roleMsg)
 
     // WebRTC 설정
     webrtcConfig := webrtc.Configuration{
         ICETransportPolicy: webrtc.ICETransportPolicyAll,
         ICEServers: []webrtc.ICEServer{
             {
-                URLs:       []string{"stun:stun.l.google.com:19302"},  // ICE 서버 설정
-                Username:   "yourUsername",
-                Credential: "yourPassword",
+                URLs:       []string{"stun:stun.l.google.com:19302"},
             },
         },
     }
@@ -55,6 +66,11 @@ func main() {
         }
     })
 
+    // 역할에 따라 Offer 또는 Answer 생성
+    if isOfferer {
+        createAndSendOffer()
+    }
+
     // 웹캠에서 영상 가져오기 (GStreamer 사용)
     videoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
         MimeType: webrtc.MimeTypeVP8,
@@ -68,16 +84,8 @@ func main() {
         log.Fatal(err)
     }
 
-    // 영상 스트리밍 시작
+    // GStreamer 파이프라인 시작
     startGStreamerPipeline()
-
-    // Offer/Answer 설정
-    peerConnection.OnNegotiationNeeded(func() {
-        log.Println("Negotiation needed")
-        if peerConnection.SignalingState() == webrtc.SignalingStateStable {
-            createAndSendOffer()
-        }
-    })
 
     // 데이터채널 생성 및 제어 명령 처리
     dataChannel, err := peerConnection.CreateDataChannel("control", nil)
@@ -91,9 +99,51 @@ func main() {
         handleControlCommand(command)
     })
 
+    // 시그널링 서버에서 받은 메시지를 처리
+    go func() {
+        for {
+            var msg string
+            websocket.Message.Receive(wsConn, &msg)
+            log.Printf("Received message from signaling server: %s", msg)
+            handleSignalingMessage(msg)
+        }
+    }()
+
     // 대기 (PeerConnection 종료 전까지 실행 유지)
     select {}
 }
+
+// 시그널링 서버에서 받은 메시지 처리
+func handleSignalingMessage(msg string) {
+    var signal map[string]interface{}
+    err := json.Unmarshal([]byte(msg), &signal)
+    if err != nil {
+        log.Printf("Error unmarshaling signaling message: %v", err)
+        return
+    }
+
+    if sdp, ok := signal["sdp"].(map[string]interface{}); ok {
+        log.Println("Received SDP")
+        if sdp["type"] == "offer" {
+            // Offer 수신 시 Answer 생성
+            createAndSendAnswer()
+        }
+    } else if candidate, ok := signal["candidate"].(map[string]interface{}); ok {
+        log.Println("Received ICE Candidate")
+        
+        // 포인터 변환을 위해 임시 변수 사용
+        sdpMid := candidate["sdpMid"].(string)
+        sdpMLineIndex := uint16(candidate["sdpMLineIndex"].(float64))
+
+        iceCandidate := webrtc.ICECandidateInit{
+            Candidate:     candidate["candidate"].(string),
+            SDPMid:        &sdpMid,             // *string으로 변환
+            SDPMLineIndex: &sdpMLineIndex,      // *uint16으로 변환
+        }
+        peerConnection.AddICECandidate(iceCandidate)
+    }
+}
+
 
 // GStreamer를 사용해 웹캠에서 영상 가져오기
 func startGStreamerPipeline() {
@@ -121,13 +171,29 @@ func createAndSendOffer() {
     sendSDPToSignalingServer(offer)
 }
 
+// SDP Answer 생성 및 시그널링 서버로 전송
+func createAndSendAnswer() {
+    answer, err := peerConnection.CreateAnswer(nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    err = peerConnection.SetLocalDescription(answer)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("Created SDP Answer: %s", answer.SDP)
+    sendSDPToSignalingServer(answer)
+}
+
 // SDP 및 ICE 후보 시그널링 서버로 전송
 func sendSDPToSignalingServer(sdp webrtc.SessionDescription) {
     message := map[string]interface{}{
         "type": "sdp",
         "sdp":  sdp,
     }
-    err := wsConn.WriteJSON(message)
+    err := websocket.JSON.Send(wsConn, message)
     if err != nil {
         log.Println("Error sending SDP to signaling server:", err)
     } else {
@@ -140,7 +206,7 @@ func sendIceCandidateToSignalingServer(candidate webrtc.ICECandidateInit) {
         "type":      "candidate",
         "candidate": candidate,
     }
-    err := wsConn.WriteJSON(message)
+    err := websocket.JSON.Send(wsConn, message)
     if err != nil {
         log.Println("Error sending ICE candidate to signaling server:", err)
     } else {
